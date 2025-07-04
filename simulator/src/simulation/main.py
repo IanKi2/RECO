@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from game_logic import GameState
+from game_logic import GameWorld
 from validation import validate_init_params
 import threading
 
@@ -29,7 +29,7 @@ def init_game():
     # Создание состояния игры
     try:
         with lock:
-            game_state = GameState(validated_config)
+            game_state = GameWorld(validated_config)
     except RuntimeError as e:
         return jsonify({'error': 'Initialization failed', 'details': str(e)}), 500
     

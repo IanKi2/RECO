@@ -1,14 +1,16 @@
 import numpy as np
 from perlin_noise import PerlinNoise
-import random
 
 
 class Obstacle:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.kind = "obstacle"
         self.is_passable = False  # Препятствия непроходимы
+        self.kind = "obstacle"
+
+    def __str__(self):
+        return "🟧"  # Символ для препятствия
 
 
 class Cell:
@@ -16,6 +18,9 @@ class Cell:
         self.x = x
         self.y = y
         self.entity = None  # Сущность на клетке
+
+    def __str__(self):
+        return str(self.entity) if self.entity else "⬛"
 
     def add_entity(self, entity):
         """Добавляет сущность на клетку"""
@@ -28,7 +33,7 @@ class Cell:
     def is_passable(self):
         """Проверяет, можно ли пройти через клетку"""
         return self.entity is None or self.entity.is_passable
-
+    
     def get_cell_properties(self):
         """Исправленный метод с проверкой на наличие сущности"""
         if self.entity:
@@ -36,33 +41,25 @@ class Cell:
                 "x": self.x,
                 "y": self.y,
                 "kind": self.entity.kind,
-                "is_passable": self.entity.is_passable,
+                "is_passable": self.entity.is_passable
             }
         else:
-            return {"x": self.x, "y": self.y, "kind": "empty", "is_passable": True}
+            return {
+                "x": self.x,
+                "y": self.y,
+                "kind": "empty",
+                "is_passable": True
+            }
 
 
 class GameWorld:
     def __init__(self):
-        # self.field_size = config['field_size']
-        # self.tick_interval = config['tick_interval']
-        # self.seed = config['seed']
-        # self.npc_count = config['npc_count']
-        # self.resource_count = config['resource_count']
-        # self.obstacle_percent = config['obstacle_percent']
-        # self.npc_movement = config['npc_movement']
-        # self.agent_vision_radius = config['agent_vision_radius']
-        # self.octaves = 2
-        # self.noise_scale = 0.15
-        # self.cells = []
-
-        self.field_size = 50
+        self.field_size = 5
         self.seed = 42
         self.obstacle_percent = 30
         self.octaves = 2
         self.noise_scale = 0.15
         self.cells = []  # 2D-массив клеток
-        self.initialize_world()
 
     def generate_obstacle_map(self):
         """Генерация карты препятствий с использованием шума Перлина"""
@@ -82,25 +79,33 @@ class GameWorld:
         threshold = np.percentile(normalized_map, 100 - self.obstacle_percent)
         return (normalized_map > threshold).astype(int)
 
-    def initialize_world(self):
+    def create_world(self):
+        """Создает игровой мир с клетками и препятствиями"""
         obstacle_matrix = self.generate_obstacle_map()
         self.cells = []
 
+        # Создаем сетку клеток
         for i in range(self.field_size):
             row = []
             for j in range(self.field_size):
                 cell = Cell(i, j)
+
+                # Если в матрице препятствий 1 - создаем препятствие
                 if obstacle_matrix[i][j] == 1:
                     obstacle = Obstacle(i, j)
                     cell.add_entity(obstacle)
+
                 row.append(cell)
             self.cells.append(row)
+        return self
 
-    #     # 2. Размещение агента
-
-    #     # 3. Генерация NPC (избегаем препятствий и позиции агента)
-
-    #     # 4. Генерация ресурсов (могут быть на любых свободных клетках)
+    def visualize(self, size=10):
+        """Визуализирует часть карты"""
+        print("\nКарта игрового мира:")
+        for i in range(min(size, self.field_size)):
+            for j in range(min(size, self.field_size)):
+                print(self.cells[i][j], end=" ")
+            print()
 
     def is_passable_at(self, x, y):
         """Проверяет, можно ли пройти через клетку по координатам"""
@@ -108,6 +113,13 @@ class GameWorld:
             return False  # Координаты вне мира - непроходимы
 
         return self.cells[x][y].is_passable()
+
+    def get_entity_at(self, x, y):
+        """Возвращает сущность по координатам"""
+        if not (0 <= x < self.field_size and 0 <= y < self.field_size):
+            return None  # Координаты вне мира
+
+        return self.cells[x][y].entity
 
     def remove_entity_at(self, x, y):
         """Удаляет сущность по координатам"""
@@ -118,38 +130,31 @@ class GameWorld:
             self.cells[x][y].remove_entity()
             return True
         return False
-
+    
     def get_world_properties(self):
         """Возвращает свойства мира для отправки клиенту"""
         properties = {
             "width": self.field_size,
             "height": self.field_size,
-            "obstacles": [],  # Только препятствия
+            "obstacles": []  # Только препятствия
         }
-
+        
         for x in range(self.field_size):
             for y in range(self.field_size):
-                if (
-                    self.cells[x][y].entity
-                    and self.cells[x][y].entity.kind == "obstacle"
-                ):
+                if self.cells[x][y].entity and self.cells[x][y].entity.kind == "obstacle":
                     properties["obstacles"].append({"x": x, "y": y})
-
+        
         return properties
 
-    def get_init_response(self):
-        """Данные для ответа после инициализации"""
-        return {
-            "status": "initialized",
-            "field_size": self.field_size,
-            "tick_interval": self.tick_interval,
-            "seed": self.seed,
-            "npc_count": self.npc_count,
-            "resource_count": self.resource_count,
-            "obstacle_percent": self.obstacle_percent,
-            "npc_movement": self.npc_movement,
-            "agent_vision_radius": self.agent_vision_radius,
-        }
 
 
+# Пример использования
+if __name__ == "__main__":
+    # Создаем мир
+    world = GameWorld().create_world()
+
+    # Визуализируем часть карты
+    world.visualize(size=10)
+
+    print(world.get_world_properties())
 
