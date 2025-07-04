@@ -45,10 +45,10 @@ def validate_init_params(config):
     # Проверка доступности места на поле
     total_cells = field_size ** 2
 
-    if npc_count > int(total_cells * 0.30):
+    if npc_count > int(total_cells * 0.10):
         errors.append('too much npc')
 
-    if resource_count > int(total_cells * 0.30):
+    if resource_count > int(total_cells * 0.10):
         errors.append('too much resource')
 
     obstacle_cells = int(total_cells * obstacle_percent / 100)

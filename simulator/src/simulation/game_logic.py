@@ -8,8 +8,28 @@ class Obstacle:
         self.x = x
         self.y = y
         self.kind = "obstacle"
-        self.is_passable = False  # Препятствия непроходимы
+        self.is_passable = False 
 
+class Npc:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.kind = "npc"
+        self.is_passable = False
+
+class Resours:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.kind = "resours"
+        self.is_passable = True
+
+class Agent:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.kind = "agent"
+        self.is_passable = False
 
 class Cell:
     def __init__(self, x, y):
@@ -56,8 +76,10 @@ class GameWorld:
         # self.noise_scale = 0.15
         # self.cells = []
 
-        self.field_size = 50
+        self.field_size = 5
         self.seed = 42
+        self.npc_count = 3
+        self.resource_count = 3
         self.obstacle_percent = 30
         self.octaves = 2
         self.noise_scale = 0.15
@@ -96,11 +118,34 @@ class GameWorld:
                 row.append(cell)
             self.cells.append(row)
 
-    #     # 2. Размещение агента
+        # Собираем все свободные клетки
+        free_cells = []
+        for row in self.cells:
+            for cell in row:
+                if cell.entity is None:
+                    free_cells.append(cell)
+        random.shuffle(free_cells)
 
-    #     # 3. Генерация NPC (избегаем препятствий и позиции агента)
+        # Добавляем NPC
+        for _ in range(min(self.npc_count, len(free_cells))):
+            cell = free_cells.pop()
+            cell.add_entity(Npc(cell.x, cell.y))
 
-    #     # 4. Генерация ресурсов (могут быть на любых свободных клетках)
+        # Добавляем ресурсы
+        for _ in range(min(self.resource_count, len(free_cells))):
+            cell = free_cells.pop()
+            cell.add_entity(Resours(cell.x, cell.y))
+
+        cell = free_cells.pop()
+        cell.add_entity(Agent(cell.x, cell.y))
+
+    def is_passable_at(self, x, y):
+        """Проверяет, можно ли пройти через клетку по координатам"""
+        if not (0 <= x < self.field_size and 0 <= y < self.field_size):
+            return False  # Координаты вне мира - непроходимы
+
+        return self.cells[x][y].is_passable()
+
 
     def is_passable_at(self, x, y):
         """Проверяет, можно ли пройти через клетку по координатам"""
@@ -124,7 +169,12 @@ class GameWorld:
         properties = {
             "width": self.field_size,
             "height": self.field_size,
-            "obstacles": [],  # Только препятствия
+            "score": "(count)",
+            "respawns": "(count)",
+            "agent": [],
+            "npcs": [],
+            "resourses": [],
+            "obstacles": []
         }
 
         for x in range(self.field_size):
@@ -134,6 +184,30 @@ class GameWorld:
                     and self.cells[x][y].entity.kind == "obstacle"
                 ):
                     properties["obstacles"].append({"x": x, "y": y})
+
+        for x in range(self.field_size):
+            for y in range(self.field_size):
+                if (
+                    self.cells[x][y].entity
+                    and self.cells[x][y].entity.kind == "npc"
+                ):
+                    properties["npcs"].append({"x": x, "y": y})
+
+        for x in range(self.field_size):
+            for y in range(self.field_size):
+                if (
+                    self.cells[x][y].entity
+                    and self.cells[x][y].entity.kind == "resours"
+                ):
+                    properties["resourses"].append({"x": x, "y": y})
+
+        for x in range(self.field_size):
+            for y in range(self.field_size):
+                if (
+                    self.cells[x][y].entity
+                    and self.cells[x][y].entity.kind == "agent"
+                ):
+                    properties["agent"].append({"x": x, "y": y})
 
         return properties
 
@@ -151,5 +225,12 @@ class GameWorld:
             "agent_vision_radius": self.agent_vision_radius,
         }
 
+
+# Пример использования
+if __name__ == "__main__":
+    # Создаем мир
+    world = GameWorld()
+
+    print(world.get_world_properties())
 
 
