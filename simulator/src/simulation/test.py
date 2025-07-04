@@ -24,11 +24,11 @@ class Npc:
         return "🔴"  # Символ для препятствия
 
 
-class Resours:
+class Resource:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.kind = "resours"
+        self.kind = "resource"
         self.is_passable = True
 
     def __str__(self):
@@ -82,17 +82,6 @@ class Cell:
 
 class GameWorld:
     def __init__(self):
-        # self.field_size = config['field_size']
-        # self.tick_interval = config['tick_interval']
-        # self.seed = config['seed']
-        # self.npc_count = config['npc_count']
-        # self.resource_count = config['resource_count']
-        # self.obstacle_percent = config['obstacle_percent']
-        # self.npc_movement = config['npc_movement']
-        # self.agent_vision_radius = config['agent_vision_radius']
-        # self.octaves = 2
-        # self.noise_scale = 0.15
-        # self.cells = []
 
         self.field_size = 5
         self.seed = 42
@@ -103,6 +92,8 @@ class GameWorld:
         self.noise_scale = 0.15
         self.cells = []  # 2D-массив клеток
         self.initialize_world()
+
+
 
     def generate_obstacle_map(self):
         """Генерация карты препятствий с использованием шума Перлина"""
@@ -124,55 +115,44 @@ class GameWorld:
 
     def initialize_world(self):
         obstacle_matrix = self.generate_obstacle_map()
-        self.cells = []
+        self.cells = [[Cell(i, j) for j in range(self.field_size)] for i in range(self.field_size)]
+        
+        # Список всех возможных позиций
+        all_positions = [(i, j) for i in range(self.field_size) for j in range(self.field_size)]
+        random.shuffle(all_positions)
+        
+        # 1. Добавляем препятствия (с правильной индексацией)
+        obstacle_positions = []
+        for i, j in all_positions[:]:  # Используем копию списка
+            if obstacle_matrix[i][j] == 1:  # Правильная индексация [i][j]
+                self.cells[i][j].add_entity(Obstacle(i, j))
+                obstacle_positions.append((i, j))
+        
+        # Удаляем позиции с препятствиями из общего списка
+        all_positions = [pos for pos in all_positions if pos not in obstacle_positions]
+        
+        # 2. Добавляем NPC
+        npc_positions = random.sample(all_positions, min(self.npc_count, len(all_positions)))
+        for i, j in npc_positions:
+            self.cells[i][j].add_entity(Npc(i, j))
+        
+        # Удаляем позиции NPC
+        all_positions = [pos for pos in all_positions if pos not in npc_positions]
+        
+        # 3. Добавляем ресурсы
+        resource_positions = random.sample(all_positions, min(self.resource_count, len(all_positions)))
+        for i, j in resource_positions:
+            self.cells[i][j].add_entity(Resource(i, j))  # Используем правильный класс
+        
+        # Удаляем позиции ресурсов
+        all_positions = [pos for pos in all_positions if pos not in resource_positions]
+        
+        # 4. Добавляем агента
+        if all_positions:
+            i, j = random.choice(all_positions)
+            self.cells[i][j].add_entity(Agent(i, j))
 
-        for i in range(self.field_size):
-            row = []
-            for j in range(self.field_size):
-                cell = Cell(i, j)
-                if obstacle_matrix[i][j] == 1:
-                    obstacle = Obstacle(i, j)
-                    cell.add_entity(obstacle)
-                row.append(cell)
-            self.cells.append(row)
-
-        # Собираем все свободные клетки
-        free_cells = []
-        for row in self.cells:
-            for cell in row:
-                if cell.entity is None:
-                    free_cells.append(cell)
-        random.shuffle(free_cells)
-
-        # Добавляем NPC
-        for _ in range(min(self.npc_count, len(free_cells))):
-            cell = free_cells.pop()
-            cell.add_entity(Npc(cell.x, cell.y))
-
-        # Добавляем ресурсы
-        for _ in range(min(self.resource_count, len(free_cells))):
-            cell = free_cells.pop()
-            cell.add_entity(Resours(cell.x, cell.y))
-
-        cell = free_cells.pop()
-        cell.add_entity(Agent(cell.x, cell.y))
-
-    def is_passable_at(self, x, y):
-        """Проверяет, можно ли пройти через клетку по координатам"""
-        if not (0 <= x < self.field_size and 0 <= y < self.field_size):
-            return False  # Координаты вне мира - непроходимы
-
-        return self.cells[x][y].is_passable()
-
-    def remove_entity_at(self, x, y):
-        """Удаляет сущность по координатам"""
-        if not (0 <= x < self.field_size and 0 <= y < self.field_size):
-            return False  # Координаты вне мира
-
-        if self.cells[x][y].entity:
-            self.cells[x][y].remove_entity()
-            return True
-        return False
+    
 
     def visualize(self, size=100):
         """Визуализирует часть карты"""
@@ -182,49 +162,36 @@ class GameWorld:
                 print(self.cells[i][j], end=" ")
             print()
 
+
     def get_world_properties(self):
-        """Возвращает свойства мира для отправки клиенту"""
+        """Исправленный метод с правильными ключами JSON"""
         properties = {
             "width": self.field_size,
             "height": self.field_size,
-            "obstacles": [],
-            "npc": [],
-            "resours": [],
-            "agent": []
+            "score": "(count)",
+            "respawns": "(count)",
+            "agent": [],
+            "npcs": [],
+            "resourses": [],  # Ключ "resourses" (во множественном числе)
+            "obstacles": []
         }
 
-        for x in range(self.field_size):
-            for y in range(self.field_size):
-                if (
-                    self.cells[x][y].entity
-                    and self.cells[x][y].entity.kind == "obstacle"
-                ):
-                    properties["obstacles"].append({"x": x, "y": y})
-
-        for x in range(self.field_size):
-            for y in range(self.field_size):
-                if (
-                    self.cells[x][y].entity
-                    and self.cells[x][y].entity.kind == "npc"
-                ):
-                    properties["npc"].append({"x": x, "y": y})
-
-        for x in range(self.field_size):
-            for y in range(self.field_size):
-                if (
-                    self.cells[x][y].entity
-                    and self.cells[x][y].entity.kind == "resours"
-                ):
-                    properties["resours"].append({"x": x, "y": y})
-
-        for x in range(self.field_size):
-            for y in range(self.field_size):
-                if (
-                    self.cells[x][y].entity
-                    and self.cells[x][y].entity.kind == "agent"
-                ):
-                    properties["agent"].append({"x": x, "y": y})
-
+        for i in range(self.field_size):
+            for j in range(self.field_size):
+                cell = self.cells[i][j]
+                if cell.entity:
+                    entity_info = {"x": i, "y": j}  # Используем координаты клетки
+                    kind = cell.entity.kind
+                    
+                    if kind == "obstacle":
+                        properties["obstacles"].append(entity_info)
+                    elif kind == "npc":
+                        properties["npcs"].append(entity_info)
+                    elif kind == "resource":  # Сущность имеет kind="resource"
+                        properties["resourses"].append(entity_info)  # Но ключ "resourses"
+                    elif kind == "agent":
+                        properties["agent"].append(entity_info)
+        
         return properties
 
     def get_init_response(self):
@@ -240,9 +207,9 @@ class GameWorld:
             "npc_movement": self.npc_movement,
             "agent_vision_radius": self.agent_vision_radius,
         }
+    
 
-
-# Пример использования
+    # Пример использования
 if __name__ == "__main__":
     # Создаем мир
     world = GameWorld()
@@ -250,3 +217,8 @@ if __name__ == "__main__":
     world.visualize()
 
     print(world.get_world_properties())
+
+
+
+
+
