@@ -1,202 +1,143 @@
-import numpy as np
-from perlin_noise import PerlinNoise
 import random
 
+def calculate_new_position(x, y, direction):
+    if direction == 'up': return (x, y - 1)
+    if direction == 'down': return (x, y + 1)
+    if direction == 'left': return (x - 1, y)
+    if direction == 'right': return (x + 1, y)
+    return (x, y)
 
-class Obstacle:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.kind = "obstacle"
-        self.is_passable = False 
-
-class Npc:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.kind = "npc"
-        self.is_passable = False
-
-class Resource:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.kind = "resource"
-        self.is_passable = True
-
-class Agent:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.kind = "agent"
-        self.is_passable = False
-
-class Cell:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.entity = None
-
-    def add_entity(self, entity):
-        """Добавляет сущность на клетку"""
-        self.entity = entity
-
-    def remove_entity(self):
-        """Удаляет сущность с клетки"""
-        self.entity = None
-
-    def is_passable(self):
-        """Проверяет, можно ли пройти через клетку"""
-        return self.entity is None or self.entity.is_passable
-
-    def get_cell_properties(self):
-        """Исправленный метод с проверкой на наличие сущности"""
-        if self.entity:
-            return {
-                "x": self.x,
-                "y": self.y,
-                "kind": self.entity.kind,
-                "is_passable": self.entity.is_passable,
-            }
+def process_game_tick(gameworld, command_data):
+    command = command_data['command']
+    agent = gameworld.agent
+    
+    # Обработка команды агента
+    if command == 'move':
+        direction = command_data['direction']
+        agent.direction = direction
+        
+        new_x, new_y = calculate_new_position(agent.x, agent.y, direction)
+        
+        # Проверка выхода за границы мира
+        if not (0 <= new_x < gameworld.field_size and 0 <= new_y < gameworld.field_size):
+            gameworld.handle_collision()
         else:
-            return {"x": self.x, "y": self.y, "kind": "empty", "is_passable": True}
-
-
-class GameWorld:
-    def __init__(self, config):
-        self.field_size = config['field_size']
-        self.tick_interval = config['tick_interval']
-        self.seed = config['seed']
-        self.npc_count = config['npc_count']
-        self.resource_count = config['resource_count']
-        self.obstacle_percent = config['obstacle_percent']
-        self.npc_movement = config['npc_movement']
-        self.agent_vision_radius = config['agent_vision_radius']
-        self.octaves = 2
-        self.noise_scale = 0.15
-        self.initialize_world()
-
-
-
-    def generate_obstacle_map(self):
-        """Генерация карты препятствий с использованием шума Перлина"""
-        noise = PerlinNoise(octaves=self.octaves, seed=self.seed)
-        noise_map = np.zeros((self.field_size, self.field_size))
-
-        for i in range(self.field_size):
-            for j in range(self.field_size):
-                noise_map[i][j] = noise([i * self.noise_scale, j * self.noise_scale])
-
-        # Нормализация значений
-        noise_min = np.min(noise_map)
-        noise_max = np.max(noise_map)
-        normalized_map = (noise_map - noise_min) / (noise_max - noise_min)
-
-        # Определение порога для нужного процента препятствий
-        threshold = np.percentile(normalized_map, 100 - self.obstacle_percent)
-        return (normalized_map > threshold).astype(int)
-
-    def initialize_world(self):
-        obstacle_matrix = self.generate_obstacle_map()
-        self.cells = [[Cell(i, j) for j in range(self.field_size)] for i in range(self.field_size)]
+            new_cell = gameworld.cells[new_x][new_y]
+            
+            # Проверка на проходимость клетки
+            if new_cell.is_passable():
+                # Перемещаем агента
+                old_cell = gameworld.cells[agent.x][agent.y]
+                old_cell.remove_entity()
+                new_cell.add_entity(agent)
+                agent.x, agent.y = new_x, new_y
+                
+                # Сбор ресурса если он есть
+                if new_cell.resource:
+                    gameworld.score += 5
+                    gameworld.resources.remove(new_cell.resource)
+                    new_cell.remove_resource()
+            else:
+                # Столкновение с непроходимым объектом
+                gameworld.handle_collision()
+    
+    elif command == 'attack':
+        # Координаты всех соседних клеток (не диагональных)
+        neighbors = [
+            (agent.x, agent.y - 1),  # вверх
+            (agent.x, agent.y + 1),  # вниз
+            (agent.x - 1, agent.y),  # влево
+            (agent.x + 1, agent.y)   # вправо
+        ]
         
-        # Список всех возможных позиций
-        all_positions = [(i, j) for i in range(self.field_size) for j in range(self.field_size)]
-        random.shuffle(all_positions)
+        killed = 0
         
-        # 1. Добавляем препятствия
-        obstacle_positions = []
-        for i, j in all_positions[:]:
-            if obstacle_matrix[i][j] == 1:
-                self.cells[i][j].add_entity(Obstacle(i, j))
-                obstacle_positions.append((i, j))
-        all_positions = [pos for pos in all_positions if pos not in obstacle_positions]
+        # Проверяем все соседние клетки
+        for x, y in neighbors:
+            # Проверка границ мира
+            if not (0 <= x < gameworld.field_size and 0 <= y < gameworld.field_size):
+                continue
+                
+            cell = gameworld.cells[x][y]
+            
+            # Если в клетке NPC - уничтожаем его
+            if cell.entity and cell.entity.kind == 'npc':
+                gameworld.npcs.remove(cell.entity)
+                cell.remove_entity()
+                killed += 1
         
-        # 2. Добавляем NPC
-        npc_positions = random.sample(all_positions, min(self.npc_count, len(all_positions)))
-        for i, j in npc_positions:
-            self.cells[i][j].add_entity(Npc(i, j))
-        all_positions = [pos for pos in all_positions if pos not in npc_positions]
-        
-        # 3. Добавляем ресурсы
-        resource_positions = random.sample(all_positions, min(self.resource_count, len(all_positions)))
-        for i, j in resource_positions:
-            self.cells[i][j].add_entity(Resource(i, j))
-        all_positions = [pos for pos in all_positions if pos not in resource_positions]
-        
-        # 4. Добавляем агента
-        if all_positions:
-            i, j = random.choice(all_positions)
-            self.cells[i][j].add_entity(Agent(i, j))
-
-    # def is_passable_at(self, x, y):
-    #     """Проверяет, можно ли пройти через клетку по координатам"""
-    #     if not (0 <= x < self.field_size and 0 <= y < self.field_size):
-    #         return False  # Координаты вне мира - непроходимы
-
-    #     return self.cells[x][y].is_passable()
-
-
-    # def is_passable_at(self, x, y):
-    #     """Проверяет, можно ли пройти через клетку по координатам"""
-    #     if not (0 <= x < self.field_size and 0 <= y < self.field_size):
-    #         return False  # Координаты вне мира - непроходимы
-
-    #     return self.cells[x][y].is_passable()
-
-    # def remove_entity_at(self, x, y):
-    #     """Удаляет сущность по координатам"""
-    #     if not (0 <= x < self.field_size and 0 <= y < self.field_size):
-    #         return False  # Координаты вне мира
-
-    #     if self.cells[x][y].entity:
-    #         self.cells[x][y].remove_entity()
-    #         return True
-    #     return False
-
-
-    def get_world_properties(self):
-        """Исправленный метод с правильными ключами JSON"""
-        properties = {
-            "width": self.field_size,
-            "height": self.field_size,
-            "score": "(count)",
-            "respawns": "(count)",
-            "agent": [],
-            "npcs": [],
-            "resources": [],
-            "obstacles": []
-        }
-
-        for x in range(self.field_size):
-            for y in range(self.field_size):
-                cell = self.cells[x][y]
-                if cell.entity:
-                    entity_info = {"x": x, "y": y}
-                    kind = cell.entity.kind
+        # Начисляем очки: 10 за каждого убитого NPC
+        gameworld.score += killed * 10
+    
+    # Движение NPC (если включено)
+    if gameworld.npc_movement:
+        # Создаем копию списка для безопасного удаления
+        for npc in gameworld.npcs[:]:
+            directions = ['up', 'down', 'left', 'right']
+            random.shuffle(directions)
+            moved = False
+            
+            for d in directions:
+                new_x, new_y = calculate_new_position(npc.x, npc.y, d)
+                
+                if (0 <= new_x < gameworld.field_size and 
+                    0 <= new_y < gameworld.field_size):
                     
-                    if kind == "obstacle":
-                        properties["obstacles"].append(entity_info)
-                    elif kind == "npc":
-                        properties["npcs"].append(entity_info)
-                    elif kind == "resource":
-                        properties["resources"].append(entity_info)
-                    elif kind == "agent":
-                        properties["agent"].append(entity_info)
-        
-        return properties
+                    new_cell = gameworld.cells[new_x][new_y]
+                    
+                    if new_cell.is_passable() and not new_cell.entity:
+                        # Перемещаем NPC
+                        old_cell = gameworld.cells[npc.x][npc.y]
+                        old_cell.remove_entity()
+                        new_cell.add_entity(npc)
+                        npc.x, npc.y = new_x, new_y
+                        moved = True
+                        break
+    
+    # Расчет видимой области
+    visible_entities = calculate_visible_entities(gameworld)
+    
+    # Формируем ответ
+    return {
+        "width": gameworld.field_size,
+        "height": gameworld.field_size,
+        "score": gameworld.score,
+        "respawns": gameworld.respawns,
+        "agent": {
+            "x": agent.x,
+            "y": agent.y,
+            "direction": agent.direction
+        },
+        "visible_entities": visible_entities
+    }
 
-    def get_init_response(self):
-        """Данные для ответа после инициализации"""
-        return {
-            "field_size": self.field_size,
-            "seed": self.seed,
-            "npc_count": self.npc_count,
-            "resource_count": self.resource_count,
-            "obstacle_percent": self.obstacle_percent,
-            "npc_movement": self.npc_movement,
-            "agent_vision_radius": self.agent_vision_radius,
-        }
-
-
-
+def calculate_visible_entities(gameworld):
+    agent = gameworld.agent
+    radius = gameworld.agent_vision_radius
+    min_x = max(0, agent.x - radius)
+    max_x = min(gameworld.field_size - 1, agent.x + radius)
+    min_y = max(0, agent.y - radius)
+    max_y = min(gameworld.field_size - 1, agent.y + radius)
+    
+    visible = {
+        "npcs": [],
+        "resources": [],
+        "obstacles": []
+    }
+    
+    for x in range(min_x, max_x + 1):
+        for y in range(min_y, max_y + 1):
+            cell = gameworld.cells[x][y]
+            
+            # Проверяем сущности
+            if cell.entity:
+                if cell.entity.kind == "npc":
+                    visible["npcs"].append({"x": x, "y": y})
+                elif cell.entity.kind == "obstacle":
+                    visible["obstacles"].append({"x": x, "y": y})
+            
+            # Проверяем ресурсы
+            if cell.resource:
+                visible["resources"].append({"x": x, "y": y})
+    
+    return visible

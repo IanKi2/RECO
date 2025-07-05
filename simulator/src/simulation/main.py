@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
-from game_logic import GameWorld
-from validation import validate_init_params
+from game_objects import GameWorld
+from game_logic import process_game_tick
+from validation import validate_init_params, validate_command
 import threading
 
 app = Flask(__name__)
@@ -32,7 +33,7 @@ def init_game():
     
     response = {
         'status': 'game_initialized',
-        'parameters': gameworld.get_init_response()
+        'parameters': gameworld.get_init_params()
     }
     return jsonify(response), 200
 
@@ -43,7 +44,7 @@ def status_check():
         return jsonify({'status': 'not initialized'}), 200
     
     try:
-        parameters = gameworld.get_init_response()
+        parameters = gameworld.get_init_params()
         return jsonify({
             'status': 'launched',
             'parameters': parameters
@@ -64,24 +65,39 @@ def get_full_state():
         }), 404
     
     try:
-        response = gameworld.get_world_properties()
+        response = gameworld.get_full_state()
         return jsonify(response), 200
     except Exception as e:
         return jsonify({'error': 'state_retrieval_failed'}), 500
     
 
-# ЗАГОТОВКА ДЛЯ /command (реализация будет добавлена позже)
 @app.route('/command', methods=['POST'])
 def handle_command():
+    global gameworld
+    
     if gameworld is None:
         return jsonify({
-            'error': 'game_not_initialized',
-            'solution': 'Call POST /init first'
+            "error": "game_not_initialized",
+            "solution": "Call POST /init first"
         }), 404
-        
-    # TODO: Реализовать логику обработки команд
-    return jsonify({'error': 'not_implemented'}), 501
 
+    data = request.get_json()
+    errors = validate_command(data)
+    
+    if errors:
+        return jsonify({
+            "error": "invalid_command",
+            "details": errors
+        }), 400
+    
+    try:
+        response = process_game_tick(gameworld, data)
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({
+            "error": "processing_failed",
+            "details": str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
