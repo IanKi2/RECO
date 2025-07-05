@@ -23,8 +23,8 @@ def validate_init_params(config):
     if not isinstance(npc_movement, bool):
         errors.append('npc_movement must be boolean')
     
-    if not 10 <= field_size <= 1000:
-        errors.append('field_size must be between 10 and 1000')
+    if not 10 <= field_size <= 100:
+        errors.append('field_size must be between 10 and 100')
     
     if not 0 <= npc_count <= 1000:
         errors.append('npc_count must be between 0 and 1000')
@@ -35,8 +35,8 @@ def validate_init_params(config):
     if not 0 <= obstacle_percent <= 30:
         errors.append('obstacle_percent must be between 0 and 30')
 
-    if not 5 <= vision_radius <= 1000:
-        errors.append('agent_vision_radius must be between 5 and 1000')
+    if not 5 <= vision_radius <= 100:
+        errors.append('agent_vision_radius must be between 5 and 100')
     
 
     total_cells = field_size ** 2
