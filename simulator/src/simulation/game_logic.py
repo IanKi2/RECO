@@ -35,7 +35,7 @@ class Cell:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.entity = None  # Сущность на клетке
+        self.entity = None
 
     def add_entity(self, entity):
         """Добавляет сущность на клетку"""
@@ -104,30 +104,24 @@ class GameWorld:
         all_positions = [(i, j) for i in range(self.field_size) for j in range(self.field_size)]
         random.shuffle(all_positions)
         
-        # 1. Добавляем препятствия (с правильной индексацией)
+        # 1. Добавляем препятствия
         obstacle_positions = []
-        for i, j in all_positions[:]:  # Используем копию списка
-            if obstacle_matrix[i][j] == 1:  # Правильная индексация [i][j]
+        for i, j in all_positions[:]:
+            if obstacle_matrix[i][j] == 1:
                 self.cells[i][j].add_entity(Obstacle(i, j))
                 obstacle_positions.append((i, j))
-        
-        # Удаляем позиции с препятствиями из общего списка
         all_positions = [pos for pos in all_positions if pos not in obstacle_positions]
         
         # 2. Добавляем NPC
         npc_positions = random.sample(all_positions, min(self.npc_count, len(all_positions)))
         for i, j in npc_positions:
             self.cells[i][j].add_entity(Npc(i, j))
-        
-        # Удаляем позиции NPC
         all_positions = [pos for pos in all_positions if pos not in npc_positions]
         
         # 3. Добавляем ресурсы
         resource_positions = random.sample(all_positions, min(self.resource_count, len(all_positions)))
         for i, j in resource_positions:
-            self.cells[i][j].add_entity(Resource(i, j))  # Используем правильный класс
-        
-        # Удаляем позиции ресурсов
+            self.cells[i][j].add_entity(Resource(i, j))
         all_positions = [pos for pos in all_positions if pos not in resource_positions]
         
         # 4. Добавляем агента
@@ -170,23 +164,23 @@ class GameWorld:
             "respawns": "(count)",
             "agent": [],
             "npcs": [],
-            "resources": [],  # Ключ "resourses" (во множественном числе)
+            "resources": [],
             "obstacles": []
         }
 
-        for i in range(self.field_size):
-            for j in range(self.field_size):
-                cell = self.cells[i][j]
+        for x in range(self.field_size):
+            for y in range(self.field_size):
+                cell = self.cells[x][y]
                 if cell.entity:
-                    entity_info = {"x": i, "y": j}  # Используем координаты клетки
+                    entity_info = {"x": x, "y": y}
                     kind = cell.entity.kind
                     
                     if kind == "obstacle":
                         properties["obstacles"].append(entity_info)
                     elif kind == "npc":
                         properties["npcs"].append(entity_info)
-                    elif kind == "resource":  # Сущность имеет kind="resource"
-                        properties["resources"].append(entity_info)  # Но ключ "resourses"
+                    elif kind == "resource":
+                        properties["resources"].append(entity_info)
                     elif kind == "agent":
                         properties["agent"].append(entity_info)
         
@@ -195,9 +189,7 @@ class GameWorld:
     def get_init_response(self):
         """Данные для ответа после инициализации"""
         return {
-            "status": "initialized",
             "field_size": self.field_size,
-            "tick_interval": self.tick_interval,
             "seed": self.seed,
             "npc_count": self.npc_count,
             "resource_count": self.resource_count,

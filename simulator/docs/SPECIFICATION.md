@@ -48,7 +48,7 @@
 
 #### 1. Инициализация игры
 **Endpoint**: `POST /init`  
-**Тело запроса** (убрано `tick_interval`):
+**Тело запроса**:
 ```json
 {
   "field_size": 50,
@@ -60,14 +60,31 @@
   "agent_vision_radius": 5
 }
 ```
-**Ответ**: `HTTP 200 OK`  
+**Ответ**: `HTTP 200 OK`
+```json
+{
+  "status": "game_initialized",
+  "parameters": {
+    "field_size": 50,
+    "seed": 12345,
+    "npc_count": 100,
+    "resource_count": 200,
+    "obstacle_percent": 15,
+    "npc_movement": true,
+    "agent_vision_radius": 5
+  }
+}
+```
 **Ошибки**:
-- `400`: Невалидные параметры
-- `409`: Игра уже инициализирована
+| Код | Тело ответа | Условие |
+|-----|-------------|---------|
+| `400` | `{"error": "invalid_params", "details": "field_size must be 10-1000"}` | Невалидные параметры |
+| `409` | `{"error": "conflict", "message": "Game already initialized"}` | Игра уже запущена |
+| `500` | `{"error": "initialization_failed", "reason": "Map generation error"}` | Ошибка генерации мира |
 
 ---
 
-#### 2. Отправка команд (игровой такт)
+#### 2. Отправка команд
 **Endpoint**: `POST /command`  
 **Тело запроса**:
 ```json
@@ -82,7 +99,7 @@
 3. Проверить столкновения и сбор ресурсов
 4. Вернуть новое состояние
 
-**Ответ**:
+**Ответ**: `HTTP 200 OK` - успешное выполнение такта 
 ```json
 {
   "width": 50,
@@ -97,12 +114,21 @@
   }
 }
 ```
+**Ошибки**:
+| Код | Тело ответа | Условие |
+|-----|-------------|---------|
+| `400` | `{"error": "invalid_command", "valid_commands": ["move", "attack"]}` | Неподдерживаемая команда |
+| `400` | `{"error": "invalid_direction", "valid_directions": ["up","down","left","right"]}` | Неверное направление |
+| `403` | `{"error": "forbidden", "reason": "Command not allowed during respawn"}` | Действие заблокировано |
+| `404` | `{"error": "game_not_initialized", "solution": "Call POST /init first"}` | Игра не инициализирована |
+| `409` | `{"error": "invalid_state", "reason": "Agent is colliding with obstacle"}` | Конфликт состояния |
+| `500` | `{"error": "processing_failed"}` | Ошибка обработки |
 
 ---
 
 #### 3. Получение полного состояния (админ)
 **Endpoint**: `GET /full-state`  
-**Ответ**:
+**Ответ**: `HTTP 200 OK`
 ```json
 {
   "width": 50,
@@ -115,18 +141,20 @@
   "obstacles": [{"x": 5, "y": 5}, ...]
 }
 ```
-
+**Ошибки**:
+| Код | Тело ответа | Условие |
+|-----|-------------|---------|
+| `404` | `{"error": "game_not_found", "message": "Game state not initialized"}` | Игра не запущена |
+| `500` | `{"error": "state_retrieval_failed"}` | Ошибка получения состояния |
 ---
 
 #### 4. Статус сервера
 **Endpoint**: `GET /status`  
-**Ответ**:
+**Ответ**: `HTTP 200 OK` - всегда
 ```json
 {
-  "status": "ok",
-  "service": "game-server",
+  "status": "launched",
   "parameters": {
-    "status": "initialized",
     "field_size": 50,
     "seed": 12345,
     "npc_count": 100,
@@ -137,7 +165,11 @@
   }
 }
 ```
-
+```json
+{
+  "status": "not initialized",
+}
+```
 ---
 
 ### Логика игрового такта
