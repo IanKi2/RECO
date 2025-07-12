@@ -21,7 +21,7 @@ class AStarBot:
             command_body = self._format_command(decision)
             viz_data = {"path": route}
             
-            return command_body, 
+            return command_body, viz_data
     
             
         except Exception as e:
